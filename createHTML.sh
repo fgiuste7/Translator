@@ -12,7 +12,8 @@ Help()
     echo "Syntax: createHTML [-w|--word] [-o|--ofile] [-h|--help]"
     echo "Options:"
     echo "w     word to translate."
-    echo "o     Output html file"
+    echo "L     2-letter language code."
+    echo "o     Output html file."
     echo "h     Print this Help."
     echo
     exit
@@ -28,7 +29,8 @@ fi
 
 # https://stackoverflow.com/questions/9271381/how-can-i-parse-long-form-arguments-in-shell
 word_of_interest='hello'
-ofile='translator.html'
+ofile='/data/translator.html'
+lang='zh'
 while [ "${1:-}" != "" ]; do
 case "$1" in
     "-w" | "--word")
@@ -39,14 +41,18 @@ case "$1" in
         shift
         ofile=${1}
         ;;
+    "-L" | "--language")
+        shift
+        lang=${1}
+        ;;
     "-h" | "--help")
         Help
-        exit
+        exit 1
         ;;
     \?) 
         echo "Error: Invalid option"
         Help
-        exit
+        exit 1
         ;;
     --)
         shift
@@ -54,43 +60,68 @@ case "$1" in
         ;;
     *)
         Help
-        exit
+        exit 1
         ;;
 esac
 shift
 done
 
-# Check if last command failed ($? is last exit command)
-if [ $? -ne 0 ]
-then
-    Help
-fi
 
 # Generate HTML
 GenerateHTML()
 {
-    echo 'Generating HTML...'
-    echo ${1}
-    echo ${2}
+    echo 'Running...'
+    echo ${1} # Phrase to translate
+    echo ${2} # Output HTML path
     touch ${2}
 
     ## Note: This is the URL encoded chinese spelling! Required to get the Chinese interpretation
-    encoded_word=`docker run -it soimort/translate-shell -b :zh ${1} | xxd -p | tr -d \\n | sed 's/../%&/g'`
+    # Change % -> percent and remove redundant Chinese character for % after translation
+    encoded_word=`echo "${1}" | sed 's/%/ percent/g'`
+    encoded_word=`docker run -it --rm soimort/translate-shell -b ":${lang}" "${encoded_word}" | tr -d '的'`
     if [ $? -ne 0 ]
     then
-        echo 'Docker Unsuccessful';
-        exit
+        echo 'Translation Unsuccessful';
+        exit 1
     fi
+    echo 'Translated'
+    encoded_word="\"${encoded_word}\""
     echo ${encoded_word}
+    echo
+    encoded_word=`echo "${encoded_word}" | xxd -p | tr -d '\n' | sed 's/../%&/g' | tr '\n' '+'`
+    # encoded_word=`docker run --rm python python -c "import urllib.parse; print(urllib.parse.quote(${encoded_word}) )" | tr -d '\n' sed 's/../%&/g' | tr '\n' '+'`
+    if [ $? -ne 0 ]
+    then
+        echo 'Encoding Unsuccessful';
+        exit 1
+    fi
+    echo 'Encoded String'
+    echo ${encoded_word}
+    echo
 
     # Fetch Audio file from URL-encoded word
     # audio_base64=`curl "https://www.google.com/async/translate_tts?ei=A_DeYs2lHdCwqtsPj8is4AY&yv=3&ttsp=tl:zh-CN,txt:${encoded_word},spd:1&cs=0&async=_fmt:jspb" --compressed | grep -o '\[.*\]' | sed 's/[][]//g' | sed 's/"//g'`
-    audio_base64=`wget -q -O - "https://www.google.com/async/translate_tts?ei=A_DeYs2lHdCwqtsPj8is4AY&yv=3&ttsp=tl:zh-CN,txt:${encoded_word},spd:1&cs=0&async=_fmt:jspb" | grep -o '\[.*\]' | sed 's/[][]//g' | sed 's/"//g'`
+    # audio_base64=`wget -q -O - "https://www.google.com/async/translate_tts?ttsp=tl:zh-CN,txt:${encoded_word},spd:1&cs=0&async=_fmt:jspb" | grep -o '\[.*\]' | sed 's/[][]//g' | sed 's/"//g'`
+    if [ ${lang} == 'fr' ]
+    then
+        echo 'French'
+        # French pronunciation
+        audio_base64=`wget -q -O - "https://www.google.com/async/translate_tts?ttsp=tl:fr,txt:${encoded_word},spd:1&cs=0&async=_fmt:jspb" | grep -o '\[.*\]' | sed 's/[][]//g' | sed 's/"//g'`
+    else
+        echo 'Chinese'
+        # Chinese pronunciation
+        audio_base64=`wget -q -O - "https://www.google.com/async/translate_tts?ttsp=tl:zh-CN,txt:${encoded_word},spd:1&cs=0&async=_fmt:jspb" | grep -o '\[.*\]' | sed 's/[][]//g' | sed 's/"//g'`
+    fi
+
     if [ $? -ne 0 ]
     then
-        echo 'Fetch Unsuccessful';
-        exit
+        echo 'TTS Unsuccessful';
+        exit 1
     fi
+    echo 'TTS'
+    echo ${audio_base64}
+    echo
+
 
     cat > ${2} << EOF
       <!DOCTYPE html>
@@ -122,9 +153,9 @@ EOF
     if [ $? -ne 0 ]
     then
         echo 'Unsuccessful';
-        exit
+        exit 1
     else
-        echo 'Completed Successfully!';
+        echo 'Completed';
     fi
 }
 
