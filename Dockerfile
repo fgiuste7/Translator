@@ -43,5 +43,5 @@ CMD ["/bin/sh", "./createHTML.sh"]
 WORKDIR /code
 
 # docker build -t fgiuste/translator .
-# word='hello'
-# docker run -it --rm --name translator -v ${PWD}:/data:rw -v /var/run/docker.sock:/var/run/docker.sock fgiuste/translator sh /code/createHTML.sh -w ${word} -o /data/translator.html && google-chrome translator.html
+# phrase='hello'
+# docker run -it --rm --name translator -v ${PWD}:/data:rw -v /var/run/docker.sock:/var/run/docker.sock fgiuste/translator sh createHTML.sh -w "${phrase}" && google-chrome translator.html
